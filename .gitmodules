@@ -1,0 +1,3 @@
+[submodule "simple_facehide_app"]
+	path = simple_facehide_app
+	url = https://github.com/apiss2/simple_facehide_app.git
