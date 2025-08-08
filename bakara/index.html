@@ -2,65 +2,129 @@
 <html lang="ja">
   <head>
     <meta charset="UTF-8" />
-    <title>バカラ 統計分析ツール（引き分けあり）</title>
+    <title>バカラ 統計分析ツール（引き分けあり＋グラフ）</title>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Roboto&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
       body {
-        font-family: sans-serif;
-        margin: 2rem;
-        background: #f7f7f7;
-      }
-      h1 {
+        font-family: "Roboto", sans-serif;
+        background: #f0f2f5;
+        margin: 0;
+        padding: 2rem;
         color: #333;
       }
+      h1 {
+        text-align: center;
+        margin-bottom: 1.5rem;
+      }
+      .container {
+        display: grid;
+        gap: 1rem;
+        max-width: 960px;
+        margin: auto;
+        grid-template-columns: 1fr 1fr;
+      }
+      .card {
+        background: white;
+        border-radius: 8px;
+        padding: 1.25rem;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
+      }
+      .full {
+        grid-column: 1 / -1;
+      }
+      .form-row {
+        display: grid;
+        gap: 0.5rem;
+      }
       label {
-        display: block;
-        margin-top: 1rem;
+        font-size: 0.95rem;
       }
       input {
-        width: 200px;
-        padding: 0.3rem;
+        width: 100%;
+        padding: 0.45rem;
+        margin-top: 0.25rem;
+        border: 1px solid #e0e0e0;
+        border-radius: 6px;
+        box-sizing: border-box;
       }
       button {
         margin-top: 1rem;
-        padding: 0.5rem 1rem;
+        padding: 0.6rem;
+        width: 100%;
+        background: linear-gradient(90deg, #4caf50, #3aa15a);
+        color: white;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+        font-weight: 600;
       }
-      .result {
-        margin-top: 2rem;
-        background: white;
-        padding: 1rem;
-        border-radius: 5px;
+      button:hover {
+        opacity: 0.95;
+      }
+      .result p {
+        margin: 0.3rem 0;
+      }
+      canvas {
+        width: 100% !important;
+        height: 300px !important;
+      }
+      .small-muted {
+        font-size: 0.85rem;
+        color: #666;
+      }
+      @media (max-width: 800px) {
+        .container {
+          grid-template-columns: 1fr;
+        }
       }
     </style>
   </head>
   <body>
-    <h1>バカラ プレイヤー側 賭け分析（引き分けあり）</h1>
+    <h1>バカラ プレイヤー側 賭け分析</h1>
 
-    <label
-      >初期資金: <input type="number" id="initialFunds" value="1000"
-    /></label>
-    <label
-      >1回あたりの賭け金: <input type="number" id="betAmount" value="10"
-    /></label>
-    <label
-      >ハウスエッジ (%):
-      <input type="number" id="houseEdge" value="1.24" step="0.01"
-    /></label>
-    <label
-      >ゲーム回数: <input type="number" id="gameCount" value="200"
-    /></label>
-    <label
-      >現在資金: <input type="number" id="currentFunds" value="1050"
-    /></label>
-    <label
-      >引き分け確率 (%):
-      <input type="number" id="tieProb" value="9.53" step="0.01"
-    /></label>
+    <div class="container">
+      <div class="card">
+        <div class="form-row">
+          <label
+            >初期資金: <input type="number" id="initialFunds" value="1000"
+          /></label>
+          <label
+            >1回あたりの賭け金: <input type="number" id="betAmount" value="10"
+          /></label>
+          <label
+            >ハウスエッジ (%):
+            <input type="number" id="houseEdge" value="1.24" step="0.01"
+          /></label>
+          <label
+            >ゲーム回数: <input type="number" id="gameCount" value="200"
+          /></label>
+          <label
+            >現在資金: <input type="number" id="currentFunds" value="1050"
+          /></label>
+          <label
+            >引き分け確率 (%):
+            <input type="number" id="tieProb" value="9.53" step="0.01"
+          /></label>
+          <button id="calcBtn">計算</button>
+        </div>
+      </div>
 
-    <button onclick="analyze()">計算</button>
+      <div class="card result" id="resultCard">
+        <p class="small-muted">計算ボタンを押すと結果がここに表示されます。</p>
+      </div>
 
-    <div class="result" id="result"></div>
+      <div class="card full">
+        <canvas id="chart"></canvas>
+      </div>
+    </div>
 
     <script>
+      let chartInstance = null;
+
       function analyze() {
         const initialFunds = parseFloat(
           document.getElementById("initialFunds").value
@@ -77,20 +141,15 @@
         const p_tie =
           parseFloat(document.getElementById("tieProb").value) / 100;
 
-        // ハウスエッジから勝率を逆算
-        // EV/bet = p_win - p_lose
-        // p_lose = 1 - p_win - p_tie
-        // => EV/bet = p_win - (1 - p_win - p_tie) = 2*p_win + p_tie - 1
-        // HouseEdge = -(EV/bet)
-        // => 2*p_win + p_tie - 1 = -HouseEdge
-        // => p_win = (1 - p_tie - HouseEdge) / 2
+        // ハウスエッジから勝率を逆算（引き分けあり）
+        // 2*p_win + p_tie - 1 = -HouseEdge  => p_win = (1 - p_tie - HouseEdge)/2
         const p_win = (1 - p_tie - houseEdge) / 2;
         const p_lose = 1 - p_win - p_tie;
 
         const ev_per_game = p_win * betAmount - p_lose * betAmount;
-
         const mu = ev_per_game;
-        // 分散計算（引き分け時は0変動）
+
+        // 分散（引き分けは0変動）
         const var_per_game =
           p_win * Math.pow(betAmount - mu, 2) +
           p_lose * Math.pow(-betAmount - mu, 2) +
@@ -111,26 +170,122 @@
           verdict = "やや運が良いです";
         } else if (z_score > -0.5) {
           verdict = "ほぼ期待通りです";
-        } else if (z_score > -1.0) {
-          verdict = "やや運が悪いです";
-        } else if (z_score > -2) {
+        } else if (z_score > -1) {
           verdict = "運が悪いです";
+        } else if (z_score > -2) {
+          verdict = "やや運が悪いです";
         } else {
           verdict = "かなり運が悪いです…";
         }
 
-        document.getElementById("result").innerHTML = `
-        <p>勝率: ${(p_win * 100).toFixed(4)}%</p>
-        <p>負け率: ${(p_lose * 100).toFixed(4)}%</p>
-        <p>引き分け率: ${(p_tie * 100).toFixed(4)}%</p>
-        <p>1ゲームあたり期待値: ${ev_per_game.toFixed(4)}</p>
-        <p>期待利益: ${expected_profit.toFixed(4)}</p>
-        <p>実際の利益: ${actual_profit.toFixed(4)}</p>
-        <p>σ: ${sigma.toFixed(4)}</p>
+        document.getElementById("resultCard").innerHTML = `
+        <p>勝率: ${(p_win * 100).toFixed(1)}%</p>
+        <p>負け率: ${(p_lose * 100).toFixed(1)}%</p>
+        <p>引き分け率: ${(p_tie * 100).toFixed(1)}%</p>
+        <p>1ゲームあたり期待値: ${ev_per_game.toFixed(1)}</p>
+        <p>期待利益: ${expected_profit.toFixed(1)}</p>
+        <p>実際の利益: ${actual_profit.toFixed(1)}</p>
+        <p>σ: ${sigma.toFixed(1)}</p>
         <p>Zスコア: ${z_score.toFixed(3)}</p>
         <p><strong>${verdict}</strong></p>
     `;
+
+        // === 正規分布データ作成（数値用配列とラベル配列を分ける） ===
+        const xMin = -4;
+        const xMax = 4;
+        const step = 0.1;
+        const xValues = [];
+        const xLabels = [];
+        for (let v = xMin; v <= xMax + 1e-9; v += step) {
+          const rounded = Math.round(v * 100) / 100;
+          xValues.push(rounded);
+          xLabels.push(rounded.toFixed(2));
+        }
+
+        const yData = xValues.map((val) => normalPDF(val, 0, 1));
+
+        // あなたの結果の位置（z_score）を近いインデックスに配置
+        let idx = Math.round((z_score - xMin) / step);
+        if (idx < 0) idx = 0;
+        if (idx >= xValues.length) idx = xValues.length - 1;
+
+        const redData = new Array(xValues.length).fill(null);
+        // 表示位置はインデックスに合わせて y 値をセット
+        redData[idx] = normalPDF(xValues[idx], 0, 1);
+
+        // グラフ描画
+        if (chartInstance) {
+          chartInstance.destroy();
+        }
+        const ctx = document.getElementById("chart").getContext("2d");
+
+        chartInstance = new Chart(ctx, {
+          type: "line",
+          data: {
+            labels: xLabels,
+            datasets: [
+              {
+                label: "正規分布 (Zスコア)",
+                data: yData,
+                borderColor: "#3b82f6",
+                borderWidth: 2,
+                fill: false,
+                pointRadius: 0,
+                tension: 0.2,
+              },
+              {
+                label: `あなたの結果 (Z=${z_score.toFixed(2)})`,
+                data: redData,
+                borderColor: "#ef4444",
+                backgroundColor: "#ef4444",
+                pointRadius: 6,
+                showLine: false,
+                hoverRadius: 8,
+              },
+            ],
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+              x: {
+                title: { display: true, text: "Zスコア" },
+                ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 9 },
+              },
+              y: {
+                title: { display: true, text: "確率密度" },
+              },
+            },
+            plugins: {
+              tooltip: {
+                callbacks: {
+                  label: function (context) {
+                    if (context.dataset.label && context.parsed.y != null) {
+                      return (
+                        context.dataset.label +
+                        ": " +
+                        context.parsed.y.toFixed(4)
+                      );
+                    }
+                    return null;
+                  },
+                },
+              },
+            },
+          },
+        });
       }
+
+      function normalPDF(x, mean, std) {
+        return (
+          (1 / (std * Math.sqrt(2 * Math.PI))) *
+          Math.exp(-0.5 * Math.pow((x - mean) / std, 2))
+        );
+      }
+
+      // 初回表示
+      document.getElementById("calcBtn").addEventListener("click", analyze);
+      window.addEventListener("load", analyze);
     </script>
   </body>
 </html>
