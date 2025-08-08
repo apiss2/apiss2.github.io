@@ -5,4 +5,4 @@
 
 ### 競馬関連
 - [オッズ最適化](./keiba/index.html)
-- [kbutilsドキュメント](./kbutils/index.html)
+- [バカラお得度計算機](./bakara/index.html)
