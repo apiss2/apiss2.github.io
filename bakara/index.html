@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <title>バカラ 統計分析ツール（引き分けあり）</title>
+    <style>
+      body {
+        font-family: sans-serif;
+        margin: 2rem;
+        background: #f7f7f7;
+      }
+      h1 {
+        color: #333;
+      }
+      label {
+        display: block;
+        margin-top: 1rem;
+      }
+      input {
+        width: 200px;
+        padding: 0.3rem;
+      }
+      button {
+        margin-top: 1rem;
+        padding: 0.5rem 1rem;
+      }
+      .result {
+        margin-top: 2rem;
+        background: white;
+        padding: 1rem;
+        border-radius: 5px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>バカラ プレイヤー側 賭け分析（引き分けあり）</h1>
+
+    <label
+      >初期資金: <input type="number" id="initialFunds" value="1000"
+    /></label>
+    <label
+      >1回あたりの賭け金: <input type="number" id="betAmount" value="10"
+    /></label>
+    <label
+      >ハウスエッジ (%):
+      <input type="number" id="houseEdge" value="1.24" step="0.01"
+    /></label>
+    <label
+      >ゲーム回数: <input type="number" id="gameCount" value="200"
+    /></label>
+    <label
+      >現在資金: <input type="number" id="currentFunds" value="1050"
+    /></label>
+    <label
+      >引き分け確率 (%):
+      <input type="number" id="tieProb" value="9.53" step="0.01"
+    /></label>
+
+    <button onclick="analyze()">計算</button>
+
+    <div class="result" id="result"></div>
+
+    <script>
+      function analyze() {
+        const initialFunds = parseFloat(
+          document.getElementById("initialFunds").value
+        );
+        const betAmount = parseFloat(
+          document.getElementById("betAmount").value
+        );
+        const houseEdge =
+          parseFloat(document.getElementById("houseEdge").value) / 100;
+        const gameCount = parseInt(document.getElementById("gameCount").value);
+        const currentFunds = parseFloat(
+          document.getElementById("currentFunds").value
+        );
+        const p_tie =
+          parseFloat(document.getElementById("tieProb").value) / 100;
+
+        // ハウスエッジから勝率を逆算
+        // EV/bet = p_win - p_lose
+        // p_lose = 1 - p_win - p_tie
+        // => EV/bet = p_win - (1 - p_win - p_tie) = 2*p_win + p_tie - 1
+        // HouseEdge = -(EV/bet)
+        // => 2*p_win + p_tie - 1 = -HouseEdge
+        // => p_win = (1 - p_tie - HouseEdge) / 2
+        const p_win = (1 - p_tie - houseEdge) / 2;
+        const p_lose = 1 - p_win - p_tie;
+
+        const ev_per_game = p_win * betAmount - p_lose * betAmount;
+
+        const mu = ev_per_game;
+        // 分散計算（引き分け時は0変動）
+        const var_per_game =
+          p_win * Math.pow(betAmount - mu, 2) +
+          p_lose * Math.pow(-betAmount - mu, 2) +
+          p_tie * Math.pow(0 - mu, 2);
+
+        const actual_profit = currentFunds - initialFunds;
+        const expected_profit = ev_per_game * gameCount;
+        const sigma = Math.sqrt(var_per_game * gameCount);
+        const z_score =
+          sigma > 0 ? (actual_profit - expected_profit) / sigma : 0;
+
+        let verdict;
+        if (z_score > 2) {
+          verdict = "かなり運が良いです！";
+        } else if (z_score > 1.0) {
+          verdict = "運が良いです";
+        } else if (z_score > 0.5) {
+          verdict = "やや運が良いです";
+        } else if (z_score > -0.5) {
+          verdict = "ほぼ期待通りです";
+        } else if (z_score > -1.0) {
+          verdict = "やや運が悪いです";
+        } else if (z_score > -2) {
+          verdict = "運が悪いです";
+        } else {
+          verdict = "かなり運が悪いです…";
+        }
+
+        document.getElementById("result").innerHTML = `
+        <p>勝率: ${(p_win * 100).toFixed(4)}%</p>
+        <p>負け率: ${(p_lose * 100).toFixed(4)}%</p>
+        <p>引き分け率: ${(p_tie * 100).toFixed(4)}%</p>
+        <p>1ゲームあたり期待値: ${ev_per_game.toFixed(4)}</p>
+        <p>期待利益: ${expected_profit.toFixed(4)}</p>
+        <p>実際の利益: ${actual_profit.toFixed(4)}</p>
+        <p>σ: ${sigma.toFixed(4)}</p>
+        <p>Zスコア: ${z_score.toFixed(3)}</p>
+        <p><strong>${verdict}</strong></p>
+    `;
+      }
+    </script>
+  </body>
+</html>
